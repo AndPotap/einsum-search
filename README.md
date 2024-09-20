@@ -3,12 +3,18 @@ This repository contains the code for the paper [Searching for Efficient Linear 
 by Andres Potapczynski, Shikai Qiu, Marc Finzi, Christopher Ferri, Zixi Chen, Micah Goldblum, Bayan Bruss, Christopher
 De Sa and Andrew Gordon Wilson.
 
+<!---
 <table>
   <tr>
     <td><img src="./assets/3d.png" alt="Image 1" width="400"/></td>
     <td><img src="./assets/vecs_gpt2_smallvocab.png" alt="Image 2" width="300"/></td>
   </tr>
 </table>
+-->
+
+<figure>
+  <img src="./assets/3d.png" alt="Results">
+</figure>
 
 Dense linear layers are the dominant computational bottleneck in large neural networks, presenting a critical need for more efficient alternatives.
 Previous efforts focused on a small number of hand-crafted structured matrices and neglected to investigate whether these structures can surpass dense layers in terms of compute-optimal scaling laws when both the model size and training examples are optimally allocated.
