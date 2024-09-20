@@ -34,3 +34,31 @@ Please cite this work as:
     year={2024}
 }
 ```
+
+## Setup
+To setup the environment, simply run
+```
+source setup.sh
+```
+This script installs two conda environments named `struct` and `gpt`. Use the `struct` for CIFAR-10/100 and ImageNet experiments, and `gpt` for GPT-2 experiments. `struct` has more complex dependencies and will take a while to install.
+
+The directories `timm` and `scaling_mlps` are forked from the repos [pytorch-image-models](https://github.com/huggingface/pytorch-image-models/tree/main) and [scaling_mlps](https://github.com/gregorbachmann/scaling_mlps/tree/main) respectively.
+
+## Datasets
+### CIFAR-10/100
+```
+conda activate struct
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar10 --mode train --res 32
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar10 --mode val --res 32
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar100 --mode train --res 32
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar100 --mode val --res 32
+```
+
+### ImageNet
+Download and extract the ImageNet dataset from [here](https://www.image-net.org/download.php).
+
+### OpenWebText
+```
+conda activate gpt
+python prepare_owt.py
+```
