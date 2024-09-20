@@ -13,7 +13,7 @@ De Sa and Andrew Gordon Wilson.
 -->
 
 <figure>
-  <img src="./assets/3d.png" alt="Fig">
+  <img src="./assets/3d_v3.png" alt="Fig">
 </figure>
 
 Dense linear layers are the dominant computational bottleneck in large neural networks, presenting a critical need for more efficient alternatives.
