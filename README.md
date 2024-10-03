@@ -28,7 +28,7 @@ Guided by the insight that full-rank structures that maximize parameters per uni
 Please cite this work as:
 ```bibtex
 @article{potapczynski2024einsum,
-    title={{Compute Better Spent: Replacing Dense Layers with Structured Matrices}},
+    title={{Searching for Efficient Linear Layers over a Continuous Space of Structured Matrices}},
     author={Andres Potapczynski, Shikai Qiu, Marc Finzi, Christopher Ferri, Zixi Chen, Micah Goldblum, Bayan Bruss, Christopher De Sa and Andrew Gordon Wilson},
     journal={arXiv},
     year={2024}
