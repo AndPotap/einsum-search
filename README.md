@@ -30,7 +30,7 @@ Please cite this work as:
 @article{potapczynski2024einsum,
     title={{Searching for Efficient Linear Layers over a Continuous Space of Structured Matrices}},
     author={Andres Potapczynski, Shikai Qiu, Marc Finzi, Christopher Ferri, Zixi Chen, Micah Goldblum, Bayan Bruss, Christopher De Sa and Andrew Gordon Wilson},
-    journal={arXiv},
+    journal={Advances in Neural Information Processing Systems},
     year={2024}
 }
 ```
@@ -40,25 +40,61 @@ To setup the environment, simply run
 ```
 source setup.sh
 ```
-This script installs two conda environments named `struct` and `gpt`. Use the `struct` for CIFAR-10/100 and ImageNet experiments, and `gpt` for GPT-2 experiments. `struct` has more complex dependencies and will take a while to install.
+This script installs two conda environments named `struct` and `gpt`. Use the `struct` for CIFAR and MLP experiments, and `gpt` for GPT-2 experiments. `struct` has more complex dependencies and will take a while to install.
 
-The directories `timm` and `scaling_mlps` are forked from the repos [pytorch-image-models](https://github.com/huggingface/pytorch-image-models/tree/main) and [scaling_mlps](https://github.com/gregorbachmann/scaling_mlps/tree/main) respectively.
+The basic GPT-2 training code and model definition is adapted from [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master). `train_onepass.py`, `train_synth.py`, and the directory `scaling_mlps` are forked from the repo [scaling_mlps](https://github.com/gregorbachmann/scaling_mlps/tree/main). 
 
 ## Datasets
-### CIFAR-10/100
+
+### Small Vocabulary OpenWebText
+```
+conda activate gpt
+python data/small_vocab_owt.py
+```
+
+### Original OpenWebText
+```
+conda activate gpt
+python data/owt.py
+```
+
+### CIFAR-10
+Create ffcv dataset for fast loading:
 ```
 conda activate struct
 python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar10 --mode train --res 32
 python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar10 --mode val --res 32
-python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar100 --mode train --res 32
-python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar100 --mode val --res 32
 ```
 
-### ImageNet
-Download and extract the ImageNet dataset from [here](https://www.image-net.org/download.php).
+### CIFAR-5M ###
+Download the original CIFAR-5M dataset from https://github.com/preetum/cifar5m, and update `DATASET_DIR` in `scaling_mlps/data_utils/dataset_to_beton.py`. Then make the ffcv dataset for fast loading:
+```
+conda activate struct
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode train --res 32
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode val --res 32
+```
 
-### OpenWebText
+## Experiments
+### GPT-2 on Small Vocabulary OpenWebText
 ```
 conda activate gpt
-python prepare_owt.py
+# Figure 4
+sh experiments/gpt2.sh
+# Figure 6, 7
+sh experiments/moe.sh
+```
+
+
+### Next Pixel Prediction on CIFAR-5M ###
+```
+conda activate struct
+# Figure 5 top
+sh experiments/cifar5m.sh
+```
+
+### MLP Regression ###
+```
+conda activate struct
+# Figure 5 bottom
+sh experiments/mlp.sh
 ```
