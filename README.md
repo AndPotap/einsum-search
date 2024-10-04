@@ -79,7 +79,7 @@ python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode
 ```
 conda activate gpt
 # Figure 4
-sh experiments/gpt2.sh
+sh experiments/gpt.sh
 # Figure 6, 7
 sh experiments/moe.sh
 ```
