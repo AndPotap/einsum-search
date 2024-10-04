@@ -17,7 +17,7 @@ from cola.ops import Dense
 from ops.operators import OptBlockTT
 from ops.operators import EinOpVec2
 from learning.fns import gen_cores
-from learning.fns import get_einsum_expr, get_einsum_exprs
+from learning.fns import get_einsum_exprs
 from learning.fns import construct_vec_from_exps
 from learning.fns import get_core_bmm_dims
 try:
