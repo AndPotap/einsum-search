@@ -7,7 +7,7 @@ cd $HOME
 git clone https://github.com/wilson-labs/cola.git
 cd -
 pip install $HOME/cola/.[dev]
-pip install -U fvcore torchinfo einops
+pip install -U fvcore torchinfo einops opt_einsum
 conda deactivate
 
 # CIFAR experiments

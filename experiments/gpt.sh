@@ -1,5 +1,5 @@
 ### do "conda activate gpt" before running this script
-DATA_DIR=./open_small
+DATA_DIR=/vast/ap6604/open_small
 OUT_DIR=./
 WANDB_PROJ=open_small
 
