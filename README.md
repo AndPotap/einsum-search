@@ -21,8 +21,8 @@ Previous efforts focused on a small number of hand-crafted structured matrices a
 In this work, we present a unifying framework that enables searching among all linear operators expressible via an Einstein summation.
 This framework encompasses many previously proposed structures, such as low-rank, Kronecker, Tensor-Train, Block Tensor-Train (BTT), and Monarch, along with many novel structures.
 To analyze the framework, we develop a taxonomy of all such operators based on their computational and algebraic properties and show that differences in the compute-optimal scaling laws are mostly governed by a small number of variables that we introduce.
-Namely, a small ω (which measures parameter sharing) and large ψ (which measures the rank) reliably led to better scaling laws, while
-ν (which measures how much structured an operator is) can be varied with often negligible impact on the scaling laws.
+Namely, a small $\omega$ (which measures parameter sharing) and large $\psi$ (which measures the rank) reliably led to better scaling laws, while
+$\nu$ (which measures how much structured an operator is) can be varied with often negligible impact on the scaling laws.
 Guided by the insight that full-rank structures that maximize parameters per unit of compute perform the best, we propose BTT-MoE, a novel Mixture-of-Experts (MoE) architecture obtained by sparsifying computation in the BTT structure, providing a substantial compute-efficiency gain over dense layers and standard MoE.
 
 Please cite this work as:
