@@ -1,12 +1,14 @@
 ds=cifar5m
-lr=3e-3
+LR=3e-3
+DATA_PATH="./"
+DEPTH=3
+WIDTH=64
 
 ### Dense ####
-depth=3
-width=64
 struct=dense
 for scale_factor in 0.5 1 2 4 8; do
 python3 train_onepass.py \
+--data_path=$DATA_PATH \
 --wandb_project=${ds} \
 --seed=0 \
 --dataset=${ds} \
@@ -15,9 +17,9 @@ python3 train_onepass.py \
 --smooth=0 \
 --no-augment \
 --model=ARTransformer \
---width=${width} \
---depth=${depth} \
---lr=${lr} \
+--width=${WIDTH} \
+--depth=${DEPTH} \
+--lr=${LR} \
 --batch_size=64 \
 --calculate_stats=800 \
 --resolution=8 \
@@ -46,6 +48,7 @@ struct=einsum_norm
 for theta in ${thetas}; do
 for scale_factor in 0.5 1 2 4 8 16; do
 python3 train_onepass.py \
+--data_path=$DATA_PATH \
 --wandb_project=${ds} \
 --seed=0 \
 --dataset=${ds} \
@@ -54,9 +57,9 @@ python3 train_onepass.py \
 --smooth=0 \
 --no-augment \
 --model=ARTransformer \
---width=${width} \
---depth=${depth} \
---lr=${lr} \
+--width=${WIDTH} \
+--depth=${DEPTH} \
+--lr=${LR} \
 --batch_size=64 \
 --calculate_stats=800 \
 --resolution=8 \
