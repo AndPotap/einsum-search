@@ -19,7 +19,9 @@ pip uninstall torch -y
 pip uninstall torchvision -y
 pip install torch==1.12.0 torchvision==0.13.0 torchdistx --index-url https://download.pytorch.org/whl/cu116 --no-cache-dir
 # conda install -y -c pytorch -c conda-forge torchdistx cudatoolkit=11.6 -f
-cd ~; git clone https://github.com/wilson-labs/cola.git; cd -
+cd $HOME
+git clone https://github.com/wilson-labs/cola.git
+cd -
 sed -i '/torch\.func/s/^/#/' ~/cola/cola/backends/torch_fns.py # comment out lines containing torch.func which is not available in torch 1.12
 # change how a function is loaded in cola for compatibility with older versions of PyTorch
 sed -i 's/torch.utils._pytree.register_pytree_node(cls, tree_flatten, tree_unflatten)/torch.utils._pytree._register_pytree_node(cls, tree_flatten, tree_unflatten)/' ~/cola/cola/backends/backends.py
