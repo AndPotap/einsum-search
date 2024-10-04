@@ -1,3 +1,4 @@
+# Some code adapted from https://github.com/myshell-ai/JetMoE/blob/main/jetmoe/utils/parallel_experts.py
 import torch
 from torch import nn
 from torch.nn import functional as F

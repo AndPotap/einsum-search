@@ -214,6 +214,7 @@ class CoLALayer(nn.Module):
 
 
 class CoLAMoELayer(nn.Module):
+    # Some code adapted from https://github.com/myshell-ai/JetMoE/blob/main/jetmoe/utils/parallel_experts.py
     def __init__(self, experts, k=2):
         super().__init__()
         assert len(experts) > 0
@@ -297,6 +298,7 @@ class CoLAMoELayer(nn.Module):
 
 
 class BTTMoELayer(nn.Module):
+    # Some code adapted from https://github.com/myshell-ai/JetMoE/blob/main/jetmoe/utils/parallel_experts.py
     def __init__(self, btt_layer, k=2):
         super().__init__()
         self.btt_layer = btt_layer
