@@ -26,7 +26,6 @@ from functools import partial
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import destroy_process_group
 from nn.gpt2 import StructGPT
-from nn.dense_gpt2 import DenseGPT
 from model.gpt_fns import get_lr_mult
 from model.gpt_fns import update_lrs
 from model.gpt_fns import reset_lrs

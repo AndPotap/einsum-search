@@ -42,7 +42,7 @@ tt1="(0.5|0.5|0|0.5|0.5|0|0)"
 tt2="(0.33|0.67|0|0.33|0.67|0|0)" 
 
 thetas="${btt1} ${btt2} ${btt3} ${l1} ${tt1} ${tt2}"
-struct=simple_ein_vec_norm
+struct=einsum_norm
 for theta in ${thetas}; do
 for scale_factor in 0.5 1 2 4 8 16; do
 python3 train_onepass.py \

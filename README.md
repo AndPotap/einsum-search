@@ -70,8 +70,8 @@ python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar10 --mode
 Download the original CIFAR-5M dataset from https://github.com/preetum/cifar5m, and update `DATASET_DIR` in `scaling_mlps/data_utils/dataset_to_beton.py`. Then make the ffcv dataset for fast loading:
 ```
 conda activate struct
-python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode train --res 32
-python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode val --res 32
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode train --res 8
+python scaling_mlps/data_utils/dataset_to_beton.py --dataset_name cifar5m --mode val --res 8
 ```
 
 ## Experiments
@@ -83,13 +83,17 @@ sh experiments/gpt2.sh
 # Figure 6, 7
 sh experiments/moe.sh
 ```
-
+### GPT-2 on Original OpenWebText
+```
+conda activate gpt
+sh experiments/gpt_full_vocab.sh
+```
 
 ### Next Pixel Prediction on CIFAR-5M ###
 ```
 conda activate struct
 # Figure 5 top
-sh experiments/cifar5m.sh
+sh experiments/c5m.sh
 ```
 
 ### MLP Regression ###
@@ -98,3 +102,15 @@ conda activate struct
 # Figure 5 bottom
 sh experiments/mlp.sh
 ```
+
+## Plotting
+The plots can be generated using the notebooks in the `figures` directory. For Figure 4, collect the text logs in `./einsum` and `./dense` before running the notebook. For Figure 5, the notebook reads logged data from wandb, which requires you to set your wandb api key and project name in the notebooks (search `TODO` to locate them).
+- Figure 4 GPT-2 Scaling Laws on Small Vocabulary OpenWebText: `figures/scaling_laws_gpt.ipynb`
+- Figure 5 (top) Next Pixel Prediction on CIFAR-5M: `figures/scaling_laws_c5m.ipynb`
+- Figure 5 (bottom) MLP Regression: `figures/scaling_laws_mlp.ipynb`
+
+Most of the work in making the figures are computing the Pareto frontier of the loss vs compute points in a robust way. Our code automates this with convex hull finding and outlier removal.
+
+## Notes
+- We have not yet implemented efficient expert parallelism for our MoE models, which makes training slower than it could be. `BTTMoELayer` implements a hack to make training of BTT-MoE faster than using a for loop over the experts by computing all experts on all tokens in parallel using the usual BTT forward pass, but there's much room for speedup with a proper implementation of expert parallelism.
+- We use CoLA to conveniently experiment with different Einsums but do not optimize their performance with custom kernels. For relatively small sized matrices (e.g. 1000 x 1000) used in GPT-2, many Einsums can have slower runtime than dense layers per FLOP.

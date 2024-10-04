@@ -143,7 +143,7 @@ def main(args):
                 logs.update({f'rms/{name}': p.rms for name, p in model.named_parameters() if hasattr(p, 'rms')})
                 wandb.log(logs)
 
-            pb.set_description(f"Step {step}, Train Loss: {train_loss:.1f}, Test Loss: {test_loss:.1f}")
+            pb.set_description(f"Step {step}, Train Loss: {train_loss:.3f}, Test Loss: {test_loss:.3f}")
             recent_train_losses = []
 
     if args.save:

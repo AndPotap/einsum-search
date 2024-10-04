@@ -39,7 +39,6 @@ g2="(0.5|0.25|0.25|0.25|0.5|0.25|0.25)"
 thetas="${btt1} ${btt2} ${btt3} ${btt5} ${btt6} ${btt7} ${btt8} ${btt9} ${btt10} ${btt11} ${btt12} ${btt13} ${btt14} ${btt15} ${btt16} ${tt1} ${tt2} ${tt3} ${tt4} ${l1} ${l2} ${g1} ${g2}"
 
 
-
 LOG_FREQ=1000
 STEPS=1000000
 WANDB_PROJ=synth
@@ -49,11 +48,12 @@ input_dim=8
 target_layers=6
 target_width=1024
 target_act=relu
+lr=1e-3
 
 ### Einsums ####
 depth=3
 width=64
-struct=simple_ein_vec
+struct=einsum
 layers=intermediate
 for scale_factor in 1 2 8 16 32 64; do
 for theta in ${thetas}; do
@@ -78,7 +78,7 @@ CUDA_VISIBLE_DEVICES=0 python3 train_synth.py \
 --optimizer=adamw \
 --scale_factor=${scale_factor} \
 --struct=${struct} \
---expr=${expr} \
+--expr=${theta} \
 --layers=${layers} \
 --scheduler=cosine
 done;

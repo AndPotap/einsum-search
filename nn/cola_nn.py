@@ -13,23 +13,13 @@ from torch.optim import Adam, AdamW, SGD
 from fvcore.nn import FlopCountAnalysis
 from torchinfo import summary
 from sympy import factorint
-from cola.fns import kron
 from cola.ops import Dense
-from cola.ops import Tridiagonal
-from ops.operators import SubvectorsMatch, TeTrain, OptBlockTT, Monarch
-from ops.operators import BlockDiagWithTranspose, BlockTeTrain, Permutation
-from ops.operators import Banded, Diag
-from ops.operators import EinOpVec, EinOpVec2
-from ops.operators import NonBTT
-from ops.operators import RieBTT
-from ops.operators import BTTDense
-from ops.operators import GBTT
-from ops.operators import DenseNorm
+from ops.operators import OptBlockTT
+from ops.operators import EinOpVec2
 from learning.fns import gen_cores
 from learning.fns import get_einsum_expr, get_einsum_exprs
 from learning.fns import construct_vec_from_exps
 from learning.fns import get_core_bmm_dims
-from learning.fns import FactGBTT
 try:
     from trainkit.saving import save_object
 except ImportError:
@@ -380,13 +370,6 @@ class BTTMoELayer(nn.Module):
             p.out = torch.sqrt(torch.mean(out**2) + 1e-8).item()
             p.scale = p.out / p.x
 
-
-def build_dense_test(d_in, d_out, bias=True, **_):
-    U = torch.randn(d_out, d_in)
-    nn.init.kaiming_normal_(U, mode='fan_in', nonlinearity='relu')
-    return CoLALayer(Dense(U), bias=bias)
-
-
 def build_dense(d_in, d_out, bias=True, zero_init=False, **_):
     U = torch.randn(d_in, d_out)
     U.d_in = d_in
@@ -394,25 +377,6 @@ def build_dense(d_in, d_out, bias=True, zero_init=False, **_):
     U.init_std = np.sqrt(min(U.d_in, U.d_out) * U.d_out / (U.d_out * U.d_in * U.d_in))
     cola_init(U, zero_init)
     return CoLALayer(Dense(U), bias=bias)
-
-
-def build_dense_norm(d_in, d_out, bias=True, zero_init=False, **_):
-    U = torch.randn(d_in, d_out)
-    U.d_in = d_in
-    U.d_out = d_out
-    U.init_std = np.sqrt(min(U.d_in, U.d_out) * U.d_out / (U.d_out * U.d_in * U.d_in))
-    cola_init(U, zero_init)
-    return CoLALayer(DenseNorm(U), bias=bias)
-
-
-def build_dense_rms_norm(d_in, d_out, bias=True, zero_init=False, **_):
-    U = torch.randn(d_in, d_out)
-    U.d_in = d_in
-    U.d_out = d_out
-    U.init_std = np.sqrt(min(U.d_in, U.d_out) * U.d_out / (U.d_out * U.d_in * U.d_in))
-    cola_init(U, zero_init)
-    return CoLALayer(Dense(U), bias=bias, do_rms_norm=True)
-
 
 def build_low_rank(d_in, d_out, rank_frac=0, bias=True, zero_init=False, spect_init=False, **_):
     assert rank_frac >= 0, 'rank_frac must be non-negative'
@@ -432,7 +396,6 @@ def build_low_rank(d_in, d_out, rank_frac=0, bias=True, zero_init=False, spect_i
     A = Dense(U) @ Dense(V)
     return CoLALayer(A, bias=bias)
 
-
 def build_low_rank_norm(d_in, d_out, rank_frac=0, bias=True, zero_init=False, spect_init=False, **_):
     assert rank_frac >= 0, 'rank_frac must be non-negative'
     if rank_frac == 0:
@@ -450,42 +413,6 @@ def build_low_rank_norm(d_in, d_out, rank_frac=0, bias=True, zero_init=False, sp
     cola_init(V)
     A = DenseNorm(U) @ DenseNorm(V)
     return CoLALayer(A, bias=bias)
-
-
-def build_tridiag(d_in, d_out, bias=True, zero_init=False, **_):
-    d = max(d_in, d_out)
-    std = 0 if zero_init else np.sqrt(1 / 3)
-    diag = torch.randn(d, 1) * std
-    diag.d_in = 1
-    low_diag = torch.randn(d - 1, 1) * std
-    low_diag.d_in = 1
-    up_diag = torch.randn(d - 1, 1) * std
-    up_diag.d_in = 1
-    A = Tridiagonal(low_diag, diag, up_diag)
-    A = A[:d_in, :d_out]
-    return CoLALayer(A, bias=bias)
-
-
-def build_tt(d_in, d_out, tt_dim, tt_rank, permute=False, bias=True, zero_init=False, **_):
-    ns, ms = factorize(d_in, tt_dim), factorize(d_out, tt_dim)
-    print(f'TT shape: {ns} -> {ms}')
-    cores = []
-    for idx in range(tt_dim):
-        rank_prev = 1 if idx == 0 else tt_rank
-        rank_next = 1 if idx == tt_dim - 1 else tt_rank
-        core = torch.randn(rank_prev, ns[idx], ms[idx], rank_next)
-        core.d_in = ns[idx] * rank_prev
-        core.d_out = ms[idx] * rank_next
-        cola_init(core, zero_init and idx == tt_dim - 1)
-        cores.append(core)
-
-    A = TeTrain(cores)
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    return CoLALayer(A, bias=bias)
-
 
 def build_opt_btt(d_in, d_out, tt_dim=2, tt_rank=1, bias=True, permute=False, zero_init=False, normalize=False, learn_gamma=True,
                   init='smart_spect', **_):
@@ -529,345 +456,6 @@ def build_opt_btt(d_in, d_out, tt_dim=2, tt_rank=1, bias=True, permute=False, ze
         A = P_in @ A @ P_out
     return CoLALayer(A, bias=bias)
 
-
-def build_opt_btt_scale(d_in, d_out, tt_dim=2, tt_rank=1, bias=True, permute=False, zero_init=False, normalize=False,
-                        learn_gamma=True, init='smart_spect', scaling=1, scale_factor=1, scale_mode="constand_param", **_):
-    assert tt_rank > 0, 'tt_rank must be positive'
-
-    scale = 2**(scaling - 1)
-    if scale_mode == 'constant_width':
-        rs = (1, scale, 1)
-    else:
-        scale = scale * scale
-        rs = (1, 1, 1)
-    ms = (1 * scale, d_in // scale)
-    ns = (d_out // scale, 1 * scale)
-
-    shapes = (rs, ms, ns)
-    cores = []
-
-    print(f"BTTA Scale factor {scale_factor}")
-    print(f"BTTA dim_in: {d_in} dim_out: {d_out}")
-    print(f'BTTA shape: {ms} -> {ns}')
-    # exit(0)
-    param_temp = 0
-    for idx in range(tt_dim):
-        size = ns[:idx] + ms[idx + 1:] + (rs[idx] * ms[idx], rs[idx + 1] * ns[idx])
-        core = torch.randn(*size, dtype=torch.float32)
-        core.d_in = rs[idx] * ms[idx]
-        core.d_out = ns[idx] * rs[idx + 1]
-        param_temp += np.prod(size)
-        print(f"BTTA idx {idx} | {core.d_in} -> {core.d_out} | size {size} | {np.prod(size)}")
-        if init == 'spect':
-            core.init_std = np.sqrt(min(core.d_in, core.d_out) * core.d_out / (core.d_out * core.d_in * core.d_in))
-        elif init == 'smart_spect':
-            batch_dims = core.shape[:-2]
-            data = core.data
-            data = data.view(*batch_dims, rs[idx], ms[idx], rs[idx + 1] * ns[idx])
-            d_in = ms[idx]
-            d_out = rs[idx + 1] * ns[idx]
-            std = np.sqrt(min(d_in, d_out) * d_out / (d_out * d_in * d_in))
-            data = torch.randn_like(data) * std  # (..., r, m, r' * n)
-            # zero out r > 0 elements
-            data[..., 1:, :, :] = 0
-            core.data = data.view(*core.shape)
-            core.already_init = True
-        cola_init(core, zero_init and idx == tt_dim - 1)
-        cores.append(core)
-    print(f"BTTA Total param: {param_temp}")
-    # exit(0)
-    if normalize and learn_gamma:
-        gamma0 = nn.Parameter(torch.tensor(1.))
-        gamma1 = nn.Parameter(torch.tensor(1.))
-        cores.append(gamma0)
-        cores.append(gamma1)
-    A = OptBlockTT(cores, shapes, normalize)
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    return CoLALayer(A, bias=bias)
-
-
-def build_block_tt(d_in, d_out, tt_dim, tt_rank, permute=False, transpose=False, bias=True, zero_init=False, **_):
-    # tt_rank^2 should be much smaller than d_in and d_out
-    ns = factorize(d_in, tt_dim)
-    ms = factorize(d_out, tt_dim)
-    print(f'TT shape: {ns} -> {ms}')
-    cores = []
-    for idx in range(tt_dim):
-        n, m = ns[idx], ms[idx]
-        rank_prev = 1 if idx == 0 else tt_rank
-        rank_next = 1 if idx == tt_dim - 1 else tt_rank
-        core = torch.rand(rank_next, rank_prev, *(ms[:idx] + [m, n] + ns[idx + 1:]))
-        core.d_in = n * rank_prev
-        core.d_out = m * rank_next
-        core.init_std = np.sqrt(min(core.d_in, core.d_out) * core.d_out / (core.d_out * core.d_in * core.d_in))
-        cola_init(core, zero_init and idx == tt_dim - 1)
-        cores.append(core)
-
-    A = BlockTeTrain(cores, transpose=transpose)
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    return CoLALayer(A, bias=bias)
-
-
-def count_btt_flops(cores):
-    return sum(prod(core.shape) for core in cores)
-
-
-def build_monarch(d_in, d_out, num_blocks=4, bias=True, zero_init=False, **_):
-    if num_blocks == -1:
-        num_blocks = ceil(np.sqrt(d_in))
-    in_blksz = int(ceil(d_in / num_blocks))
-    out_blksz = int(ceil(d_out / num_blocks))
-    d_int_ext = in_blksz * num_blocks
-    d_out_ext = out_blksz * num_blocks
-
-    if d_int_ext < d_out_ext:
-        blkdiag1 = torch.empty(num_blocks, in_blksz, in_blksz)
-        blkdiag2 = torch.empty(num_blocks, out_blksz, in_blksz)
-    else:
-        blkdiag1 = torch.empty(num_blocks, out_blksz, in_blksz)
-        blkdiag2 = torch.empty(num_blocks, out_blksz, out_blksz)
-
-    blkdiag1.d_in, blkdiag1.d_out = blkdiag1.shape[-1], blkdiag1.shape[-2]
-    blkdiag2.d_in, blkdiag2.d_out = blkdiag2.shape[-1], blkdiag2.shape[-2]
-    cola_init(blkdiag1)
-    cola_init(blkdiag2, zero_init=zero_init)
-
-    A = Monarch((blkdiag1, blkdiag2), shape=(d_in, d_out))
-    return CoLALayer(A, bias=bias)
-
-
-def build_monarch_unif(d_in, d_out, num_blocks=4, bias=True, zero_init=False, **_):
-    in_blksz = int(ceil(d_in / num_blocks))
-    out_blksz = int(ceil(d_out / num_blocks))
-    d_int_ext = in_blksz * num_blocks
-    d_out_ext = out_blksz * num_blocks
-
-    if d_int_ext < d_out_ext:
-        blkdiag1 = torch.empty(num_blocks, in_blksz, in_blksz)
-        blkdiag2 = torch.empty(num_blocks, out_blksz, in_blksz)
-    else:
-        blkdiag1 = torch.empty(num_blocks, out_blksz, in_blksz)
-        blkdiag2 = torch.empty(num_blocks, out_blksz, out_blksz)
-
-    blkdiag1.d_in, blkdiag1.d_out = blkdiag1[-1], blkdiag1[-2]
-    blkdiag2.d_in, blkdiag2.d_out = blkdiag2[-1], blkdiag2[-2]
-    for blkdiag in [blkdiag1, blkdiag2]:
-        fan_in = blkdiag.shape[-1]
-        gain = nn.init.calculate_gain(nonlinearity='leaky_relu', param=sqrt(5))
-        std = gain / sqrt(fan_in)
-        bound = sqrt(3.0) * std
-        with torch.no_grad():
-            blkdiag.uniform_(-bound, bound)
-
-    A = Monarch((blkdiag1, blkdiag2), shape=(d_in, d_out))
-    return CoLALayer(A, bias=bias)
-
-
-def build_kron(d_in, d_out, permute=False, bias=True, zero_init=False, **_):
-    n1, n2 = factorize(d_in, 2)
-    m1, m2 = factorize(d_out, 2)
-    U = torch.randn(n1, m1)
-    V = torch.randn(n2, m2)
-    U.d_in = n1
-    U.d_out = m1
-    V.d_in = n2
-    V.d_out = m2
-    cola_init(U)
-    cola_init(V, zero_init)
-    A = kron(Dense(U), Dense(V))
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    return CoLALayer(A, bias=bias)
-
-
-def build_diag(d_in, d_out, bias=True, zero_init=False, **_):
-    assert d_in == d_out, 'Diagonal matrix must be square'
-    d = d_in
-    std = 0 if zero_init else 1
-    diag = torch.randn(d) * std
-    diag.d_in = 1
-    diag.d_out = d
-    A = Diag(diag)
-    return CoLALayer(A, bias=bias)
-
-
-def build_banded(d_in, d_out, num_bands=None, bias=True, permute=False, zero_init=False, max_block_size=4, **_):
-    # only defined if max(d_in, d_out) is multiple of d_out
-    d_in_orig = d_in
-    if d_in > d_out:
-        # pad d_in to be multiple of d_out
-        d_in = d_out * ceil(d_in / d_out)
-        print(f'Padded d_in from {d_in_orig} to {d_in}')
-    if num_bands is None:  # ~sqrt(d_in) bands
-        num_bands = 2 * (int(np.sqrt(min(d_in, d_out))) // 2) + 1  # odd number close to sqrt d_in
-    B = torch.randn(num_bands, max(d_in, d_out))
-    B.d_in = num_bands * max(1, d_in / d_out)
-    B.d_out = 1  # TODO: not sure what this should be
-    cola_init(B, zero_init)
-    A = Banded(B, d_in, d_out, max_block_size=max_block_size)
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    A = A[:d_in_orig, :d_out]
-    return CoLALayer(A, bias=bias)
-
-
-def build_blockdiag(d_in, d_out, bias=True, transpose=True, permute=False, zero_init=False, **_):
-    num_blocks = ceil(np.sqrt(d_out))
-    block_in = ceil(d_in / num_blocks)
-    block_out = ceil(d_out / num_blocks)
-    M = torch.randn(num_blocks, block_in, block_out)
-    M.d_in = block_in
-    M.d_out = block_out
-    cola_init(M, zero_init)
-    A = BlockDiagWithTranspose(M, transpose)
-    A = A[:d_in, :d_out]
-    if permute:
-        P_in = Permutation(torch.randperm(d_in), dtype=A.dtype)
-        P_out = Permutation(torch.randperm(d_out), dtype=A.dtype)
-        A = P_in @ A @ P_out
-    return CoLALayer(A, bias=bias)
-
-
-# This builds the blockdiag in a way consistent with BTT
-# More specificatlly, it adds an intermediate layer in
-# the linear transformation
-
-
-def build_blockdiag2(d_in, d_out, bias=True, transpose=True, permute=False, zero_init=False, **_):
-    ns = factorize(d_in, 2)
-    ms = factorize(d_out, 2)
-
-    print(f"{ns=} {ms=}")
-
-    num_blocks = ns[1]
-    block_in = ns[0]
-    block_out = ms[0]
-    M1 = torch.randn(num_blocks, block_in, block_out)
-    M1.d_in = block_in
-    M1.d_out = block_out
-    M1.init_std = np.sqrt(min(M1.d_in, M1.d_out) / M1.d_in**2)
-    cola_init(M1, False)  # TODO: ?
-    A1 = BlockDiagWithTranspose(M1, transpose=transpose)
-    if permute:
-        P_in = Permutation(torch.randperm(num_blocks * block_in), dtype=A1.dtype)
-        P_out = Permutation(torch.randperm(num_blocks * block_out), dtype=A1.dtype)
-        A1 = P_in @ A1 @ P_out
-
-    num_blocks = ms[0]
-    block_in = ns[1]
-    block_out = ms[1]
-    M2 = torch.randn(num_blocks, block_in, block_out)
-    M2.d_in = block_in
-    M2.d_out = block_out
-    M2.init_std = np.sqrt(min(M2.d_in, M2.d_out) / M2.d_in**2)
-    cola_init(M2, zero_init)
-    A2 = BlockDiagWithTranspose(M2, transpose=False)  # TODO: This transpose is set to match the incorrect implementation of btt
-    if permute:
-        P_in = Permutation(torch.randperm(num_blocks * block_in), dtype=A2.dtype)
-        P_out = Permutation(torch.randperm(num_blocks * block_out), dtype=A2.dtype)
-        A2 = P_in @ A2 @ P_out
-
-    print(f"{M1.d_in=} {M1.d_out=}")
-    print(f"{M2.d_in=} {M2.d_out=}")
-
-    A = A1 @ A2
-    return CoLALayer(A, bias=bias)
-
-
-def build_subvec_match(d_in, d_out, bias=True, zero_init=False, **_):
-    ns = factorize(d_in, 2)
-    ms = factorize(d_out, 2)
-    print(f"{ns=} {ms=}")
-
-    num_blocks = ns[1]
-    block_in = ns[0]
-    block_out = ms[0]
-
-    M1 = torch.randn(block_out, num_blocks, block_in)
-    M1.d_in = block_in
-    M1.d_out = block_out
-    M1.init_std = np.sqrt(1 / block_in)
-    cola_init(M1, False)
-    A1 = SubvectorsMatch(M1)
-
-    num_blocks = ms[0]
-    block_in = ns[1]
-    block_out = ms[1]
-    M2 = torch.randn(num_blocks, block_in, block_out)
-    M2.d_in = block_in
-    M2.d_out = block_out
-    M2.init_std = np.sqrt(min(M2.d_in, M2.d_out) / M2.d_in**2)
-    cola_init(M2, zero_init)
-    A2 = BlockDiagWithTranspose(M2, transpose=False)  # TODO: This transpose is set to match the incorrect implementation of btt
-
-    print(f"{M1.d_in=} {M1.d_out=}")
-    print(f"{M2.d_in=} {M2.d_out=}")
-
-    A = A1 @ A2
-    return CoLALayer(A, bias=bias)
-
-
-def build_composed_btt(d_in, d_out, cola_kwargs, bias=True, permute=False, zero_init=False, normalize=False, learn_gamma=True,
-                       **_):
-    tt_dim1 = tt_dim2 = 2
-    tt_rank1, tt_rank2 = cola_kwargs
-    cores1, shapes1 = init_btt_cores(d_in, d_out, tt_rank1, tt_dim1, zero_init=False)
-    A1 = OptBlockTT(cores1, shapes1, normalize)
-    cores2, shapes2 = init_btt_cores(d_out, d_out, tt_rank2, tt_dim2, zero_init=False)
-    A2 = OptBlockTT(cores2, shapes2, normalize)
-    A = A1 @ A2
-    return CoLALayer(A, bias=bias)
-
-
-def build_einsum_btt3_vec(d_in, d_out, fact_cls, init_type, do_sgd_lr, bias=True, zero_init=False, **_):
-    vec = fact_cls.cases[(d_in, d_out)]
-    cores = fact_cls.get_cores(vec)
-    ein_expr = "abg,abgd,bgde,gdem->dem"
-    shapes = (vec[0:3], vec[3:6])
-    A = EinOpVec(cores, ein_expr, shapes, allow_padding=fact_cls.padding)
-    INITS[init_type](A=A, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-
-    fact_cls.register_info(d_in, d_out, ein_expr, vec)
-    return CoLALayer(A, bias=bias)
-
-
-def build_einsum_nonbtt(d_in, d_out, fact_cls, init_type, act, do_sgd_lr, bias=True, zero_init=False, **_):
-    vec = fact_cls.construct_vec(d_in, d_out)
-    N_alpha, _, N_rho, N_delta, N_phi, _, N_gamma = vec
-    F0 = torch.randn(N_gamma, N_phi, N_rho * N_delta)
-    F1 = torch.randn(N_delta, N_rho * N_gamma, N_alpha)
-    rs, ms, ns = (1, N_rho, 1), (N_phi, N_gamma), (N_alpha, N_delta)
-    A = NonBTT([F0, F1], shapes=(rs, ms, ns), act_fn=ACTS[act])
-    A.allow_padding = True
-    do_btt_init(A, zero_init=zero_init)
-
-    ein_expr = "fg,fdg,adg->ad"
-    fact_cls.register_info(d_in, d_out, ein_expr, vec)
-    return CoLALayer(A, bias=bias)
-
-
-ACTS = {"identity": lambda x: x, "glu": F.glu, "gelu": F.gelu, "leaky_relu": F.leaky_relu, "relu": F.relu}
-
-
-def build_einsum(d_in, d_out, fact_cls, init_type, do_sgd_lr, bias=True, zero_init=False, **_):
-    α, β, γ, δ, ε, φ, _ = vec = fact_cls.construct_vec(d_in, d_out)
-    cores = gen_cores(vec)  # random initalized cores
-    ein_expr = get_einsum_expr(vec)  # einsum string
-    A = EinOpVec(cores, ein_expr, shapes=((α, β, γ), (δ, ε, φ)))
-    INITS[init_type](A=A, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-    return CoLALayer(A, bias=bias)
-
-
 def do_btt_init(A, zero_init, **_):
     for idx, M in enumerate(A.Ms):
         M.d_in, M.d_out = M.shape[0], M.shape[1]
@@ -890,18 +478,7 @@ def do_bmm1_init(A, vec, zero_init, **_):
         M.init_std = np.sqrt(min(M.d_in, M.d_out) * M.d_out / (M.d_out * M.d_in * M.d_in))
         cola_init(M, zero_init and idx == 1)
 
-
-def do_rsgd_init(A, vec, core_info, d_in, d_out, **_):
-    core_mult = []
-    for idx, M in enumerate(A.Ms):
-        M.d_in = 1
-        M.d_out = 1
-        M.init_std = core_mult[idx]["std"]
-        cola_init(M)
-        M.lr_mult = (d_out / d_in) * core_mult[idx]["lr_mult"]
-
-
-INITS = {"bmm0": do_bmm0_init, "bmm1": do_bmm1_init, "rsgd": do_rsgd_init}
+INITS = {"bmm0": do_bmm0_init, "bmm1": do_bmm1_init}
 
 
 def init_btt_cores(d_in, d_out, tt_rank, tt_dim, zero_init):
@@ -949,20 +526,7 @@ def build_dense_moe(d_in, d_out, num_experts, bias=True, zero_init=False, num_ac
     return CoLAMoELayer(experts, k=num_active_experts)
 
 
-def build_simple_ein_vec(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, normalize=False,
-                         do_rms_norm=False, **_):
-    α, β, γ, δ, ε, φ, _ = vec = construct_vec_from_exps(d_in, d_out, expr, procedure="round")  # integer array of dimensions
-    if (β == 1) and (δ == 1):
-        return build_btt_vec(d_in, d_out, expr, init_type=init_type, do_sgd_lr=do_sgd_lr, bias=bias, zero_init=zero_init,
-                             normalize=normalize, do_rms_norm=do_rms_norm)
-    cores = gen_cores(vec)  # random initalized cores
-    ein_expr = get_einsum_expr(vec)  # einsum string
-    A = EinOpVec(cores, ein_expr, shapes=((γ, β, α), (φ, ε, δ)), normalize=normalize)
-    INITS[init_type](A=A, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-    return CoLALayer(A, bias=bias, in_features=d_in, out_features=d_out, padding=True, do_rms_norm=do_rms_norm)
-
-
-def build_simple_ein_vec_two(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, normalize=False,
+def build_einsum(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, normalize=False,
                              do_rms_norm=False, **_):
     α, β, γ, δ, ε, φ, _ = vec = construct_vec_from_exps(d_in, d_out, expr, procedure="round")  # integer array of dimensions
     if (β == 1) and (δ == 1):
@@ -986,18 +550,6 @@ def build_btt_norm_moe_parallel(d_in, d_out, num_experts, tt_dim, tt_rank, bias=
     cola_init(B, zero_init=zero_init)
     return BTTMoELayer(btt_layer, k=num_active_experts)
 
-
-def build_gbtt(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, **_):
-    fact_cls = FactGBTT(expr)
-    vec = fact_cls.construct_vec(d_in, d_out)
-    α, _, γ, _, ε, φ, ρ, ξ = vec
-    A, B = torch.randn(γ * ξ, α, φ * ρ, dtype=torch.float32), torch.randn(φ * ξ, γ * ρ, ε, dtype=torch.float32)
-    AOp = GBTT([A, B], shapes=vec)
-    print(f"({d_in}, {d_out}) | {AOp.shape}")
-    INITS[init_type](A=AOp, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-    return CoLALayer(AOp, bias=bias, in_features=d_in, out_features=d_out, padding=True, padding_tol=0.5)
-
-
 def build_btt_vec(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, normalize=False, **_):
     α, β, γ, δ, ε, φ, ρ = vec = construct_vec_from_exps(d_in, d_out, expr, procedure="round")
     assert (β == 1) and (δ == 1), f"Not a BTT vec as d_β = {β} and d_δ = {δ}"
@@ -1008,117 +560,19 @@ def build_btt_vec(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=Tru
     return CoLALayer(Op, bias=bias, in_features=d_in, out_features=d_out, padding=True, padding_tol=0.15)
 
 
-def build_dense_btt(d_in, d_out, expr, init_type='bmm0', do_sgd_lr=False, bias=True, zero_init=False, normalize=False, **_):
-    α, β, γ, δ, ε, φ, ρ = vec = construct_vec_from_exps(d_in, d_out, expr, procedure="round")
-    assert (β == 1) and (δ == 1), f"Not a BTT vec as d_β = {β} and d_δ = {δ}"
-    A, B = torch.randn(γ, α, φ * ρ), torch.randn(φ, γ * ρ, ε)
-    Op = BTTDense([A, B], shapes=(α, γ, ε, φ, ρ), normalize=normalize)
-    print(f"({d_in}, {d_out}) | {Op.shape}")
-    INITS[init_type](A=Op, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-    return CoLALayer(Op, bias=bias, in_features=d_in, out_features=d_out, padding=True, padding_tol=0.1)
-
-
-def build_rbtt(d_in, d_out, expr, bias=True, zero_init=False, **_):
-    α, β, γ, δ, ε, φ, ρ = construct_vec_from_exps(d_in, d_out, expr, procedure="round")
-    assert (β == 1) and (δ == 1), f"Not a BTT vec as d_β = {β} and d_δ = {δ}"
-    A, B = torch.randn(γ, α, φ * ρ), torch.randn(φ, γ * ρ, ε)
-    Op = RieBTT([A, B], shapes=(α, γ, ε, φ, ρ))
-    A_d_in, A_d_out, B_d_in, B_d_out = α, φ * ρ, γ * ρ, ε
-    for idx, (core, (d_core_in, d_core_out)) in enumerate(zip([A, B], [(A_d_in, A_d_out), (B_d_in, B_d_out)])):
-        core.d_in, core.d_out = d_core_in, d_core_out
-        core.lr_mult = 1.0
-        core.init_std = np.sqrt(min(core.d_in, core.d_out) * core.d_out / (core.d_out * core.d_in * core.d_in))
-        cola_init(core, zero_init and idx == 1)
-
-    return CoLALayer(Op, bias=bias, in_features=d_in, out_features=d_out, padding=True, padding_tol=0.5)
-
-
-def build_head_btt(n_head, d_head, head_btt_case, expr, bias, zero_init, init_type="bmm0", do_sgd_lr=False, **_):
-    d_in = d_out = n_head * d_head
-    *_, ρ = construct_vec_from_exps(d_in, d_out, expr, procedure="round")
-    β, δ = 1, 1
-    if head_btt_case == "(n|d|d|n)":
-        α, γ, ε, φ = n_head, d_head, d_head, n_head
-    elif head_btt_case == "(d|n|d|n)":
-        α, γ, ε, φ = d_head, n_head, d_head, n_head
-    elif head_btt_case == "(n|d|n|d)":
-        α, γ, ε, φ = n_head, d_head, n_head, d_head
-    elif head_btt_case == "(d|n|n|d)":
-        α, γ, ε, φ = d_head, n_head, n_head, d_head
-    vec = [α, β, γ, δ, ε, φ, ρ]
-    A, B = torch.randn(γ, α, φ * ρ), torch.randn(φ, γ * ρ, ε)
-    Op = OptBlockTT([A, B], shapes=((1, ρ, 1), (α, γ), (φ, ε)), normalize=True)
-    INITS[init_type](A=Op, vec=vec, do_sgd_lr=do_sgd_lr, d_in=d_in, d_out=d_out, zero_init=zero_init)
-    return CoLALayer(Op, bias=bias, in_features=d_in, out_features=d_out, padding=False, padding_tol=0.1)
-
-
 build_fns = {
+    'btt': lambda *args, **kwargs: build_opt_btt(*args, init='spect', **kwargs),
+    'btt_norm': lambda *args, **kwargs: build_opt_btt(*args, normalize=True, **kwargs),
     'low_rank_moe': build_low_rank_moe,
     'btt_moe': build_btt_moe,
     'btt_norm_moe': build_btt_norm_moe,
     'btt_norm_moe_para': build_btt_norm_moe_parallel,
     'dense_moe': build_dense_moe,
-    'btt @ btt': build_composed_btt,
-    'low_rank': build_low_rank,
-    'low_rank_spect': lambda *args, **kwargs: build_low_rank(*args, spect_init=True, **kwargs),
-    'kron': build_tt,
-    'kron_perm': lambda *args, **kwargs: build_tt(*args, permute=True, **kwargs),
-    'tt': build_tt,
-    'block_tt': build_block_tt,
-    'transpose_block_tt': lambda *args, **kwargs: build_block_tt(*args, transpose=True, **kwargs),
-    'perm_block_tt': lambda *args, **kwargs: build_block_tt(*args, permute=True, **kwargs),
-    'btt': lambda *args, **kwargs: build_opt_btt(*args, init='spect', **kwargs),
-    'btt_scale': lambda *args, **kwargs: build_opt_btt_scale(*args, init='spect', **kwargs),
-    'btt_smart_spect': lambda *args, **kwargs: build_opt_btt(*args, init='smart_spect', **kwargs),
-    'btt_he': lambda *args, **kwargs: build_opt_btt(*args, init='he', **kwargs),
-    'btt_perm': lambda *args, **kwargs: build_opt_btt(*args, permute=True, **kwargs),
-    'btt_norm': lambda *args, **kwargs: build_opt_btt(*args, normalize=True, **kwargs),
-    'block_tt': build_block_tt,
-    'monarch': build_monarch,
-    'monarch_unif': build_monarch_unif,
-    'tridiag': build_tridiag,
-    'blockdiag': lambda *args, **kwargs: build_blockdiag(*args, transpose=False, **kwargs),
-    'blockdiag_perm': lambda *args, **kwargs: build_blockdiag(*args, transpose=False, permute=True, **kwargs),
-    'blockdiagT': lambda *args, **kwargs: build_blockdiag(*args, transpose=True, **kwargs),
-    'blockdiagT2': lambda *args, **kwargs: build_blockdiag2(*args, transpose=True, **kwargs),
-    'btt_shuffle': lambda *args, **kwargs: build_subvec_match(*args, **kwargs),
-    'blockdiag_perm2': lambda *args, **kwargs: build_blockdiag2(*args, transpose=True, permute=True, **kwargs),
     'dense': build_dense,
-    'dense_test': build_dense_test,
-    'dense_rms_norm': build_dense_rms_norm,
-    'banded': build_banded,
+    'einsum_norm': lambda *args, **kwargs: build_einsum(*args, normalize=True, **kwargs),
     'einsum': build_einsum,
-    'einsum_btt3_vec': build_einsum_btt3_vec,
-    'einsum_nonbtt': build_einsum_nonbtt,
-    'simple_ein_vec': build_simple_ein_vec_two,
-    'simple_ein_vec_norm': lambda *args, **kwargs: build_simple_ein_vec_two(*args, normalize=True, **kwargs),
-    'simple_ein_vec_rms_norm':
-    lambda *args, **kwargs: build_simple_ein_vec_two(*args, normalize=False, do_rms_norm=True, **kwargs),
-    'rbtt': build_rbtt,
-    'gbtt': build_gbtt,
-    'btt_vec': build_btt_vec,
-    'btt_dense': build_dense_btt,
-    'banded_perm': lambda *args, **kwargs: build_banded(*args, permute=True, **kwargs),
     'none': None,
 }
-
-
-def select_gpt_ffn_layers(name, layer_idx, num_layers):
-    return 'mlp.c_fc' in name or 'mlp.c_proj' in name
-
-
-def select_gpt_attn_layers(name, layer_idx, num_layers):
-    return 'attn.c_attn' in name or 'attn.c_proj' in name
-
-
-def select_ffn_layers(name, layer_idx, num_layers):
-    return '.net.' in name
-
-
-def select_attn_layers(name, layer_idx, num_layers):
-    # return 'to_qkv' in name or 'to_out' in name
-    keywords = ['to_q', 'to_k', 'to_v', 'to_qkv', 'to_out']
-    return any(k in name for k in keywords)
 
 
 layer_select_fns = {
@@ -1126,12 +580,6 @@ layer_select_fns = {
     'none': lambda *_: False,
     'all_but_last': lambda name, i, n: i < n - 1,
     'intermediate': lambda name, i, n: i > 0 and i < n - 1,
-    '12': lambda name, i, n: i == 1 or i == 2,
-    '56': lambda name, i, n: i == 5 or i == 6,
-    'ffn': select_ffn_layers,
-    'attn': select_attn_layers,
-    'gpt_ffn': select_gpt_ffn_layers,
-    'gpt_attn': select_gpt_attn_layers,
 }
 
 
@@ -1370,28 +818,6 @@ def adjust_lr_and_create_optimizer(named_parameters, lr, extra_lr_mult_fn, optim
     return optimizer
 
 
-# Function to count the total number of neurons
-
-
-def count_neurons(model, fake_input):
-    # Define a forward hook function
-    def hook_fn(module, input, output):
-        nonlocal total_neurons
-        total_neurons += output.shape[1]
-
-    # Register the forward hook to each layer
-    total_neurons = 0
-    hooks = []
-    for module in model.modules():
-        if isinstance(module, torch.nn.Module):
-            # print(module.type)
-            hooks.append(module.register_forward_hook(hook_fn))
-    model(fake_input)
-    for h in hooks:
-        h.remove()
-    return total_neurons
-
-
 def get_model_summary_and_flops(model, fake_input):
     print('Model:')
     stats = summary(model, input_data=fake_input)
@@ -1399,10 +825,8 @@ def get_model_summary_and_flops(model, fake_input):
     print(f'Params: {cola_params / 1e6:.2f}M')
     cola_flops = FlopCountAnalysis(model, fake_input).set_op_handle(**custom_ops).total()
     print(f'FLOPs: {cola_flops / 1e6:.2f}M')
-    neurons = 0  # count_neurons(model, fake_input)
-    print(f"Neurons: {neurons}")
     print('=' * 90)
-    info = {'cola_params': cola_params, 'cola_flops': cola_flops, "neurons": neurons}
+    info = {'cola_params': cola_params, 'cola_flops': cola_flops}
 
     return info
 
@@ -1413,6 +837,7 @@ def btt_flop_count(inputs, outputs):
         batch_size = get_shape(x)[0]
         flops = get_numel(W1) + get_numel(W2)
     elif len(inputs) == 5:
+        # for btt_norm_moe_para, which uses more FLOPs than it needs due to naive parallelization
         x, W1, W2, gate, num_active = inputs
         num_experts = get_shape(gate)[1]
         num_active_experts = get_shape(num_active)[0]
@@ -1474,6 +899,7 @@ def update_singular_vectors(model, scale_grad_by=1):
 def custom_einsum_flop_count(inputs, outputs):
     """
     Count flops for the einsum operation.
+    Adapted from implementation in https://github.com/facebookresearch/fvcore
     """
     # Inputs of einsum should be a list of length 2+.
     # Inputs[0] stores the equation used for einsum.
@@ -1510,11 +936,7 @@ def custom_einsum_flop_count(inputs, outputs):
 
 
 custom_ops = {
-    'prim::PythonOp.BlockdiagButterflyMultiply': btt_flop_count,
     'prim::PythonOp.BlockTeTr': btt_flop_count,
-    'prim::PythonOp.RieBTTmvm': btt_flop_count,
-    'prim::PythonOp.BTTGen': btt_flop_count,
-    'prim::PythonOp.BTTmvm': btt_flop_count,
     'aten::scaled_dot_product_attention': scaled_dot_product_attention_flop_count,
     'aten::einsum': custom_einsum_flop_count,
 }
