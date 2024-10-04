@@ -1,5 +1,5 @@
 # Searching for Efficient Linear Layers over a Continuous Space of Structured Matrices
-This repository contains the code for the paper [Searching for Efficient Linear Layers over a Continuous Space of Structured Matrices](https://arxiv.org/abs/2406.06248)
+This repository contains the code for the paper [Searching for Efficient Linear Layers over a Continuous Space of Structured Matrices](https://arxiv.org/abs/2410.02117)
 by Andres Potapczynski, Shikai Qiu, Marc Finzi, Christopher Ferri, Zixi Chen, Micah Goldblum, Bayan Bruss, Christopher
 De Sa and Andrew Gordon Wilson.
 
